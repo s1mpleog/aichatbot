@@ -5,6 +5,8 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { ArrowDown } from "lucide-react";
 import LoadingSkeleton from "./LoadingSkeleton";
+import { useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
 
 interface ShowResponseProps {
   content: string;
@@ -14,6 +16,13 @@ export default function ShowResponse({ content }: ShowResponseProps) {
   const [message, setMessage] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const saveMessage = useMutation(api.messages.createTask);
+
+  const scrollToBottom = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  };
 
   useEffect(() => {
     const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -30,21 +39,29 @@ export default function ShowResponse({ content }: ShowResponseProps) {
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
-      let result = "";
+      let completeMessage = "";
 
       if (reader) {
         const readChunk = async () => {
           const { done, value } = await reader.read();
           if (done) {
             setIsLoading(false);
+            if (message !== "") {
+              saveMessage({ content: completeMessage, userId: "simpleog", userQuestion: content });
+            }
             return;
           }
 
-          result += decoder.decode(value, { stream: true });
+          const chunkText = decoder.decode(value, { stream: true });
 
-          await delay(100);
+          // Update completeMessage instead of the state here
+          completeMessage += chunkText;
 
-          setMessage((prev) => prev + result);
+          // Update state with the current message chunk
+          setMessage((prev) => prev + chunkText);
+
+          await delay(100); // Optional delay to simulate slower streaming
+
           await readChunk();
         };
 
@@ -53,13 +70,8 @@ export default function ShowResponse({ content }: ShowResponseProps) {
     };
 
     fetchResponse();
-  }, [content]);
-
-  const scrollToBottom = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  };
+    scrollToBottom();
+  }, [content, saveMessage]);
 
   return (
     <div className="p-6 max-w-7xl h-full mx-auto mb-20 overflow-y-auto">
